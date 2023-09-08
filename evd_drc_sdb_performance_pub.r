@@ -19,7 +19,7 @@
 
     # List of required packages
     x1 <- c("broom.mixed", "data.table", "ggplot2", "ggpubr", "lme4", "lubridate", 
-      "RColorBrewer", "readxl", "scales")
+      "parameters", "RColorBrewer", "readxl", "scales")
     
     # Install any packages not yet installed
     x2 <- x1 %in% row.names(installed.packages())
@@ -49,6 +49,7 @@
     palette_cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
     show_col(palette_cb)
 
+    
 #.........................................................................................
 ### Reading in required files
 #.........................................................................................
@@ -140,7 +141,6 @@
     # Set all NA case totals to zero
     x1 <- c("confirmed", "probable", "suspected", "alive", "dead", "unknown")
     tsw[, x1][is.na(tsw[, x1])] <- 0
-    tsm[, x1][is.na(tsm[, x1])] <- 0
     
     # Calculate running cumulative number of confirmed cases (as a cumulative incidence rate per 100000 population)
     tsw <- tsw[order(tsw[, "hz"], tsw[, "epi_year"], tsw[, "epi_week"]), ]
@@ -183,7 +183,6 @@
     # Set all NA case totals to zero
     x1 <- c("against_evd", "suspend_activities")
     tsw[, x1][is.na(tsw[, x1])] <- 0
-    tsm[, x1][is.na(tsm[, x1])] <- 0
     
     # Whether any attack occurred recently
     tsw <- tsw[order(tsw[, "hz"], tsw[, "epi_year"], tsw[, "epi_week"]), ]
@@ -223,7 +222,6 @@
     # Set all NA case totals to zero
     x1 <- c("n_events", "fatalities")
     tsw[, x1][is.na(tsw[, x1])] <- 0
-    tsm[, x1][is.na(tsm[, x1])] <- 0
     
     # Calculate running cumulative number of events (as a rate per 100,000 population)
     tsw <- tsw[order(tsw[, "hz"], tsw[, "epi_year"], tsw[, "epi_week"]), ]
@@ -259,7 +257,7 @@
 
 
   #...................................   
-  ## Manage date on the presence of an ETC/transit centre
+  ## Manage data on the presence of an ETC/transit centre
     # Whether an ETC or TC was open within the HZ at the given time
     tsw <- tsw[order(tsw[, "hz"], tsw[, "epi_year"], tsw[, "epi_week"]), ]
     hz <- sort(hz)
@@ -452,50 +450,84 @@
         levels = c("Red Cross mobile team", "Red Cross-supported CEHRB", "Civil Protection (mobile or CEHRB)"))
       
     # Prepare EVD case data
-     # aggregate by province
+      # aggregate by province
       x2 <- merge(evd_cases_weeks, admin_units, by="hz", all.x = TRUE)
-      x2 <- aggregate(x2[ , "confirmed"], by = x2[, c("province", "epi_year", "epi_week")], FUN = sum )
-      colnames(x2) <- c("province", "epi_year", "epi_week", "confirmed")
+      x2$all_cases <- x2$confirmed + x2$probable
+      x2 <- aggregate(x2[ , "all_cases"], by = x2[, c("province", "epi_year", "epi_week")], FUN = sum )
+      colnames(x2) <- c("province", "epi_year", "epi_week", "all_cases")
         
     # Preparatory steps for plotting  
-     # create a date variable for the x axis
-     x1[, "date"] <- as.Date(paste(x1[, "epi_year"], x1[, "epi_week"], 7), format = "%Y %U %u")
-     x2[, "date"] <- as.Date(paste(x2[, "epi_year"], x2[, "epi_week"], 7), format = "%Y %U %u")      
+      # create a date variable for the x axis
+      x1[, "date"] <- as.Date(paste(x1[, "epi_year"], x1[, "epi_week"], 7), format = "%Y %U %u")
+      x2[, "date"] <- as.Date(paste(x2[, "epi_year"], x2[, "epi_week"], 7), format = "%Y %U %u")      
 
-     # Eliminate South Kivu province (only 1 observation)
-     x1 <- subset(x1, province != "South Kivu")
-     x2 <- subset(x2, province != "South Kivu")
+      # eliminate South Kivu province (only 1 observation)
+      x1 <- subset(x1, province != "South Kivu")
+      x2 <- subset(x2, province != "South Kivu")
      
     # Draw plot
     plot <- ggplot(x1) +
       geom_bar(mapping = aes(fill = team_type, x = date, y = n_sdb), position="stack", 
         stat="identity", alpha = 0.5) +
-      geom_step(data = x2, mapping = aes(x = date, y = confirmed ), colour = palette_cb[6], size = 1) +
+      geom_step(data = x2, mapping = aes(x = date, y = all_cases ), colour = palette_cb[6], size = 1) +
       scale_fill_manual(values = palette_cb[c(7, 2, 4)]) +
-      scale_y_continuous("SDB alerts responded to", sec.axis = sec_axis(~ ., name="confirmed EVD cases")) +
+      scale_y_continuous("number of SDB alerts responded to", 
+        sec.axis = sec_axis(~ ., name="number of new confirmed or probable EVD cases")) +
       theme_bw() +
       facet_wrap(~province, nrow=2) +
       theme(legend.position="bottom", legend.direction="horizontal") +
       scale_x_date("", expand=c(0,0) , minor_breaks=NULL, date_breaks="2 months",
         date_labels = "%b-%Y", limits = c(as.Date("2018-07-01"), max(x1$date, na.rm=TRUE))  ) +
-      labs(fill = "Responder:  ") +
-      theme(legend.title = element_text(color="grey20", size=11),
-        strip.text.x = element_text(color="grey20", size=11),
-        legend.text = element_text(color="grey20", size=11),
-        axis.title.x = element_text(color="grey20", size=11), 
-        axis.text.x = element_text(color = "grey20", size=11),               
-        axis.line.y = element_line(color = "grey20"),
-        axis.ticks.y = element_line(color = "grey20"),
-        axis.text.y = element_text(color = "grey20", size=11),
-        axis.title.y = element_text(color="grey20", margin = margin(r = 10), size=11 ),
-        axis.line.y.right = element_line(color = "grey20"),
-        axis.ticks.y.right = element_line(color = "grey20"),
-        axis.text.y.right = element_text(color = "grey20", size=11),
-        axis.title.y.right = element_text(color="grey20", margin = margin(l = 10), size=11 )
-      )
+      labs(fill = "Responder:  ")
     plot
     ggsave("figure_1.png", units = "cm", height = 25, width = 22, dpi = "print", device = "png")
-   
+
+    
+  #...................................   
+  ## Same as above but combined with plots showing EVD attacks and insecurity deaths
+    
+    # Prepare attacks against EVD and insecurity deaths data for plotting
+      # select variables
+      x1 <- tsw[, c("province", "epi_year", "epi_week", "against_evd", "fatalities")]
+      
+      # aggregate by province
+      x1 <- aggregate(x1[, c("against_evd", "fatalities")], by = x1[, c("province", "epi_year", "epi_week")],
+        FUN = sum, na.rm = TRUE)
+    
+      # remove South Kivu
+      x1 <- subset(x1, province != "South Kivu")
+  
+      # create a date variable
+      x1[, "date"] <- as.Date(paste(x1[, "epi_year"], x1[, "epi_week"], 7), format = "%Y %U %u")
+  
+    # Plot of attacks against EVD
+    plot_attacks <- ggplot(x1) +
+      geom_bar(mapping = aes(x = date, y = against_evd), stat = "identity", alpha = 0.8,
+        fill = palette_cb[6]) +
+      scale_y_continuous("number of attacks against the EVD response") +
+      theme_bw() +
+      facet_wrap(~province, nrow=2) +      
+      scale_x_date("", expand=c(0,0) , minor_breaks=NULL, date_breaks="4 months",
+        date_labels = "%b-%Y", limits = c(as.Date("2018-07-01"), max(x1$date, na.rm=TRUE))) 
+
+    # Plot of insecurity fatalities
+    plot_fatalities <- ggplot(x1) +
+      geom_bar(mapping = aes(x = date, y = fatalities), stat = "identity", alpha = 0.8,
+        fill = palette_cb[8]) +
+      scale_y_continuous("number of insecurity deaths") +
+      theme_bw() +
+      facet_wrap(~province, nrow=2) +      
+      scale_x_date("", expand=c(0,0) , minor_breaks=NULL, date_breaks="4 months",
+        date_labels = "%b-%Y", limits = c(as.Date("2018-07-01"), max(x1$date, na.rm=TRUE))) 
+    
+    # Combined plot    
+    plot_combi <- ggarrange(plot, ggarrange(plot_attacks, 
+      plot_fatalities, nrow = 2, align = "hv", labels = c("B", "C")), ncol = 2,
+      widths = c(2, 1), align = "v", labels = c("A", NULL))
+    plot_combi  
+    ggsave("figure_1_rev.png", units = "cm", height = 25, width = 30, dpi = "print", device = "png")
+
+                       
   #...................................   
   ## Trends in SDB percent success over time, by province, superimposed onto trends in SDB delay (% with delay <24h)
     
@@ -547,23 +579,24 @@
       scale_x_date("", expand=c(0,0) , minor_breaks=NULL, date_breaks="2 months",
                    date_labels = "%b-%Y", limits = c(as.Date("2018-07-01"), max(x1$date, na.rm=TRUE))  ) +
       geom_hline(yintercept = 80, colour = palette_cb[4], linetype = "21", alpha = 0.7, size = 1) +
-      annotate(geom = "text", x = as.Date("2018-08-01"), y = 85, colour = palette_cb[4], label = "target") +
-      theme(legend.title = element_text(color="grey20", size=11),
-        strip.text.x = element_text(color="grey20", size=11),
-        legend.text = element_text(color="grey20", size=11),
-        axis.title.x = element_text(color="grey20", size=11), 
-        axis.text.x = element_text(color = "grey20", size=11),               
-        axis.line.y = element_line(color = "grey20"),
-        axis.ticks.y = element_line(color = "grey20"),
-        axis.text.y = element_text(color = "grey20", size=11),
-        axis.title.y = element_text(color="grey20", margin = margin(r = 10), size=11 )
-     )
+      annotate(geom = "text", x = as.Date("2018-08-01"), y = 85, colour = palette_cb[4], label = "target")
     plot
     ggsave("figure_3.png", units = "cm", height = 20, width = 20, dpi = "print", device = "png")
 
+  #...................................   
+  ## Same as above but combined with plots showing EVD attacks and insecurity deaths
+    
+    # Combined plot    
+    plot_combi <- ggarrange(plot, ggarrange(plot_attacks, 
+      plot_fatalities, nrow = 2, align = "hv", labels = c("B", "C")), ncol = 2,
+      widths = c(2, 1), align = "v", labels = c("A", NULL))
+    plot_combi  
+    ggsave("figure_3_rev.png", units = "cm", height = 25, width = 30, dpi = "print", device = "png")
       
+    
+    
 #.........................................................................................      
-### Doing univariate analysis (GLM, logistic, random effect = sub-coordination hub)
+### Doing univariate analysis (GLMM, logistic, random effect = sub-coordination hub)
 #.........................................................................................
       
   #...................................   
@@ -582,14 +615,15 @@
     # Data frame to denote which variables are exposures to include ("yes")
     exposures <- data.frame(colnames(sdb), rep("yes", length(colnames(sdb))) )
     colnames(exposures) <- c("variable", "include_exposure")  
-    exposures[exposures[, "variable"] %in% c("date", "outcome_cat", "hub_cat"), "include_exposure"] <- "no"
-    exposures[exposures[, "variable"] %in% c("fatalities_2weeks_rate_cat1", "confirmed_6weeks_rate_cat1"), "include_exposure"] <- "no"
+    exposures[exposures$variable %in% c("date", "outcome_cat", "hub_cat", "evd_status",
+    "n_events_2weeks_rate_cat", "fatalities_2weeks_rate_cat1", 
+      "confirmed_6weeks_rate_cat1"), "include_exposure"] <- "no"
     exposures <- subset(exposures, include_exposure == "yes")
     
     # Specify reference categories for categorical variables
     sdb <- as.data.frame(lapply(sdb, as.factor))
     exposures[, "ref"] <- c("IFRC", "M", "no", "ETC", "pre-epidemic", "no", "no", "yes", "18-59y", "< 4 networks",
-      "< 10 frequencies", "0", "0", "0", ">= 50.0", ">= 400 Km", "no mining")
+      "< 10 frequencies", "0", "0", ">= 50.0", ">= 400 Km", "no mining")
     for (i in 1:nrow(exposures) ) {
       x1 <- exposures[i, "variable"]
       sdb[, x1] <- relevel(sdb[, x1], exposures[i, "ref"])
@@ -597,19 +631,17 @@
     
     # Specify distal, intermediate and proximate exposure variables
     exposures[, "level"] <- c("proximate", "distal", "proximate", "proximate", "intermediate", "intermediate",
-      "intermediate", "intermediate", "distal", "intermediate", "intermediate", "intermediate",
+      "intermediate", "intermediate", "distal", "intermediate", "intermediate", 
       "intermediate", "intermediate", "distal", "distal", "distal")    
   
   #...................................   
-  ## Function to fit the random effect logistic model and display clean results
+  ## Function to fit the random effect logistic model
   f_model <- function(f_vars, f_data) {
     # write the model formula
     form <- as.formula( paste("outcome_cat", "~", paste(f_vars, collapse= " + "), "+ (1|hub_cat)", sep="")  )
     # fit GLM with random effect
     fit <- glmer(form, data = f_data, family="binomial" )
-    # compute ORs in linear form
-    f_out <- tidy(fit, conf.int=TRUE, exponentiate=TRUE, effects="fixed")
-    return(f_out)
+    return(fit)
   }
       
   #...................................   
@@ -626,7 +658,7 @@
     for (i in exposures$variable) {
       print(paste("now running univariate model for variable ", i))
       # fit model
-      out <- f_model(i, sdb)
+      out <- tidy(f_model(i, sdb), conf.int=TRUE, exponentiate=TRUE, effects="fixed")
       # if at least one p-value among all categories is less than threshold, keep variable
       if (min(out[-1, "p.value"]) < p_level) {exposures[exposures[, "variable"] == i, "univariate_pass"] <- "yes"}
       # store output
@@ -644,20 +676,22 @@
 #.........................................................................................
     
   #...................................   
-  ## Distal model
+  ## Distal model (force age and gender in)
 
     # Select exposure variables
     x1 <- subset(exposures, level == "distal" & univariate_pass == "yes")[, "variable"]
     
     # Fit model
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)
+    fit <- f_model(x1, sdb)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
 
     # Remove variables and refit iteratively, looking for most parsimonious model
     x1 <- x1[x1 != "n_mines_rate_cat"]
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)
-
+    fit <- f_model(x1, sdb)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
   #...................................   
   ## Distal + intermediate model
     
@@ -665,14 +699,16 @@
     x1 <- c(x1, subset(exposures, level == "intermediate" & univariate_pass == "yes")[, "variable"] )
     
     # Fit model
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)
-      
+    fit <- f_model(x1, sdb)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
     # Remove variables and refit iteratively, looking for most parsimonious model
-    x1 <- x1[x1 != "n_events_2weeks_rate_cat"]
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)
-      
+    x1 <- x1[x1 != "road_length_rate_cat"]
+    fit <- f_model(x1, sdb)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
   #...................................   
   ## Distal + intermediate + proximate model
     
@@ -680,27 +716,136 @@
     x1 <- c(x1, subset(exposures, level == "proximate" & univariate_pass == "yes")[, "variable"] )
     
     # Fit model
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)
+    fit <- f_model(x1, sdb)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
     
-    # Remove variables and refit iteratively, looking for most parsimonious model
-    x1 <- x1[x1 != "road_length_rate_cat"]
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)  
+    # [No variables to remove - removal of age affects other coefficients and worsens AIC]
     
-    x1 <- x1[x1 != "road_length_rate_cat"]
-    out <- f_model(x1, sdb)
-    print(out, n = Inf) 
-    
-    x1 <- x1[x1 != "age_cat"]
-    out <- f_model(x1, sdb)
-    print(out, n = Inf)     
-  
   #...................................   
   ## Save final model
-  write.csv(out, "out_multivariate.csv", row.names = FALSE)
+  write.csv(model_parameters(fit, exponentiate = TRUE), "out_multivariate.csv", row.names = FALSE)
     
-        
+
+#.........................................................................................      
+### Alternative multivariate analysis (only EBOV+ SDB cases)
+#.........................................................................................
+  
+  #...................................   
+  ## Univariate associations
+    # Define p-value threshold for screening in
+    p_level <- 0.20
+    
+    # Variables to keep in or out
+    exposures[, "univariate_pass"] <- "no"
+    
+    # Run models and store output
+    out_univariate_alt <- data.frame()
+    
+    for (i in exposures$variable) {
+      print(paste("now running univariate model for variable ", i))
+      # fit model
+      out <- tidy(f_model(i, sdb_alt), conf.int=TRUE, exponentiate=TRUE, effects="fixed")
+      # if at least one p-value among all categories is less than threshold, keep variable
+      if (min(out[-1, "p.value"]) < p_level) {exposures[exposures[, "variable"] == i, "univariate_pass"] <- "yes"}
+      # store output
+      out_univariate_alt <-rbind(out_univariate_alt, out)
+    }
+    
+    out_univariate_alt
+    
+    # Save output
+    write.csv(out_univariate_alt, "out_univariate_alt.csv", row.names = FALSE)
+
+     
+    
+  #...................................   
+  ## Distal model (force age and gender in)
+
+    # Select exposure variables
+    x1 <- subset(exposures, level == "distal" & univariate_pass == "yes")[, "variable"]
+    
+    # Subset data
+    sdb_alt <- subset(sdb, evd_status == "positive")
+    
+    # Fit model
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
+    # Remove variables and refit iteratively, looking for most parsimonious model
+    x1 <- x1[x1 != "n_mines_rate_cat"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
+    x1 <- x1[x1 != "road_length_rate_cat"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)    
+    
+  #...................................   
+  ## Distal + intermediate model
+    
+    # Select exposure variables
+    x1 <- c(x1, subset(exposures, level == "intermediate" & univariate_pass == "yes")[, "variable"] )
+    
+    # Fit model
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
+    # Remove variables and refit iteratively, looking for most parsimonious model
+    x1 <- x1[x1 != "epidemic_stage"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
+    x1 <- x1[x1 != "etc_open"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+
+    x1 <- x1[x1 != "confirmed_6weeks_rate_cat2"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+
+    x1 <- x1[x1 != "n_frequencies_cat"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+            
+    x1 <- x1[x1 != "n_networks_cat"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
+    x1 <- x1[x1 != "fatalities_2weeks_rate_cat2"]
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)    
+    
+  #...................................   
+  ## Distal + intermediate + proximate model
+    
+    # Select exposure variables
+    x1 <- c(x1, subset(exposures, level == "proximate" & univariate_pass == "yes")[, "variable"] )
+    
+    # Fit model
+    fit <- f_model(x1, sdb_alt)
+    model_parameters(fit, exponentiate = TRUE)
+    AIC(fit)
+    
+    # [Nothing left to remove - if remove HF rate, fit worsens, coefficients change]
+
+  #...................................   
+  ## Save final model
+  write.csv(model_parameters(fit, exponentiate = TRUE), "out_multivariate_alt.csv", row.names = FALSE)
+  
+  
+  
+          
 #.........................................................................................
 ### ENDS
 #.........................................................................................
